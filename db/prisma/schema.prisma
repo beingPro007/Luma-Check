@@ -1,0 +1,293 @@
+datasource db {
+  provider = "postgres"
+  url      = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  passwordHash String @db.Char(8)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //Relationships
+  organizations OrganizationUser[]
+  apiKeys       ApiKey[]
+  apiUsageLogs ApiUsageLog[]
+  tokenUsage    TokenUsage[]
+  payments      Payment[]
+
+  //auth related fields
+  refreshToken  String? @unique
+  accessToken   String? @unique
+  isActive      Boolean @default(true)
+  isEmailVerified Boolean @default(false)
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //Relationships
+  users OrganizationUser[]
+  apiKeys ApiKey[]
+  apiUsageLogs ApiUsageLog[]
+  tokenUsage TokenUsage[]
+  billingCycles BillingCycle[]
+  invoices Invoice[]
+  projects Project[]
+  payments Payment[]
+}
+
+model OrganizationUser {
+  id             String   @id @default(cuid())
+  joinedAt       DateTime @default(now())
+
+  // Relations
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  roleId         String
+  role           Role        @relation(fields: [roleId], references: [id])
+  
+  @@unique([userId, organizationId]) // Prevent duplicate entries
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String @unique
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //foreign key
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // Relationships
+  apiUsageLogs ApiUsageLog[]
+  tokenUsage TokenUsage[]
+  apikeys ApiKey[]
+}
+
+model Role{
+  id        String   @id @default(uuid())
+  name      String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  users OrganizationUser[]
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+
+  permissionId String
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId]) // Prevent duplicate permissions for a role
+}
+
+model Permission{
+  id    String   @id @default(uuid())
+  name  String   @unique
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  rolePermissions RolePermission[]
+}
+
+model ApiKey {
+  id             String   @id @default(cuid())
+  key            String   @unique @db.Char(64) // Unique API key
+  name           String   // Name of the API key
+  type           ApiKeyType    // INTERNAL or EXTERNAL
+  isActive       Boolean  @default(false)
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  // Foreign keys with relationships
+  userId         String?
+  user           User?      @relation(fields: [userId], references: [id])
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  projectId      String?
+  project        Project?   @relation(fields: [projectId], references: [id])
+
+  // Relationships
+  apiUsageLogs ApiUsageLog[]
+}
+model TokenUsage {
+  id        String   @id @default(uuid())
+  prompt_tokens Int
+  completion_tokens Int
+  total_tokens Int
+  source usageSource //Ai or Plagrism
+  createdAt DateTime @default(now())
+
+  // foreign keys with Relationships
+  userId String?
+  user User? @relation(fields: [userId], references: [id])
+
+  projectId String?
+  project Project? @relation(fields: [projectId], references: [id])
+
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([createdAt])
+}
+
+model ApiUsageLog {
+  id        String   @id @default(uuid())
+  model    String // e.g., "GPT-3.5", "GPT-4o-mini"
+  prompt_tokens Int
+  completion_tokens Int
+  total_tokens Int
+  source usageSource // Ai or Plagiarism
+  status String
+  latency Int // in milliseconds
+  apiType ApiKeyType // INTERNAL or EXTERNAL
+  createdAt DateTime @default(now())
+
+  // foreign keys with Relationships
+  apiKeyId String?
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id])
+
+  projectId String?
+  project Project? @relation(fields: [projectId], references: [id])
+
+  userId String?
+  user User? @relation(fields: [userId], references: [id])
+
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
+}
+
+model BillingCycle {
+  id        String   @id @default(uuid())
+  startDate DateTime
+  endDate   DateTime
+  quotaUsage Float // e.g., total tokens used
+  quotaLimit Float // e.g., total tokens allowed
+  paymentStatus BillingStatus @default(PENDING) // OPEN, CLOSED, PAID, etc.
+  createdAt DateTime @default(now())
+
+  // foreign keys with Relationships
+  billingPlanId String?
+  billingPlan BillingPlan? @relation(fields: [billingPlanId], references: [id])
+
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  invoices        Invoice[]
+}
+
+model Invoice {
+  id        String   @id @default(uuid())
+  amountCents    Float
+  status    InvoiceStatus @default(PENDING)
+  issuedDate DateTime @default(now())
+  dueDate   DateTime
+  createdAt DateTime @default(now())
+  paymentUrl String? // URL for payment processing
+
+  // foreign keys with Relationships
+  billingCycleId String?
+  billingCycle BillingCycle? @relation(fields: [billingCycleId], references: [id])
+
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
+}
+
+model BillingPlan {
+  id        String   @id @default(uuid())
+  name      String
+  description String?
+  priceCents Float // e.g., monthly price in cents
+  quotaLimit Float // e.g., total tokens allowed per month
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  billingCycles BillingCycle[]
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  amount    Float
+  paymentMethod String // e.g., "CREDIT_CARD", "PAYPAL"
+  paymentDate DateTime @default(now())
+  status    String // e.g., "PENDING", "COMPLETED", "FAILED"
+  createdAt DateTime @default(now())
+
+  // foreign keys with Relationships
+  userId String?
+  user User? @relation(fields: [userId], references: [id])
+
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ApiKeyType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum usageSource {
+  AI
+  PLAGIARISM
+}
+
+enum BillingStatus {
+  PENDING
+  OPEN
+  CLOSED
+  PAID
+  FAILED
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
