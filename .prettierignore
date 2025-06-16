@@ -1,0 +1,25 @@
+# Ignore build outputs and dependencies
+node_modules
+dist
+build
+out
+coverage
+
+# Ignore logs
+*.log
+
+# Ignore environment files
+.env
+.env.local
+.env.*.local
+
+# Ignore generated files
+*.lock
+*.min.js
+
+# Ignore IDE/editor config files
+.vscode
+.idea
+
+# Ignore public assets or static files if you don't want to format
+/public/assets
